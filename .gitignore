@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+dist/
+build/
+
+# Secrets and environment
+.env
+.env.*
+*.pem
+
+# Infrastructure build artifacts
+.aws-sam/
+cdk.out/
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
+
+# SAM deploy config, carries account and zone IDs
+samconfig.toml

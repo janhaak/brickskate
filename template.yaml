@@ -1,0 +1,220 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  brickskate - a wake-on-demand front door for a scale-to-zero Databricks App,
+  with an optional scheduled stop.
+
+Parameters:
+  DatabricksHost:
+    Type: String
+    Description: Workspace URL, no trailing slash. Example https://dbc-xxxxxxxx-xxxx.cloud.databricks.com
+    AllowedPattern: ^https://.+[^/]$
+  AppName:
+    Type: String
+    Description: The Databricks App name, as shown by "databricks apps list".
+  AppUrl:
+    Type: String
+    Description: The app's own URL, the one that serves 503 while it is stopped.
+    AllowedPattern: ^https://.+[^/]$
+  DatabricksClientId:
+    Type: String
+    Description: Client ID (UUID) of the service principal brickskate authenticates as.
+  SecretParameterName:
+    Type: String
+    Default: /brickskate/client-secret
+    Description: SSM SecureString parameter holding that service principal's OAuth secret.
+    AllowedPattern: ^/.+
+  FunctionNamePrefix:
+    Type: String
+    Default: brickskate
+    Description: Prefix for the Lambda, log group and EventBridge rule names.
+  DomainName:
+    Type: String
+    Default: ''
+    Description: >
+      Optional custom domain, for example app.example.com. Leave empty to use the
+      CloudFront domain that this stack outputs. Requires HostedZoneId and
+      CertificateArn when set.
+  HostedZoneId:
+    Type: String
+    Default: ''
+    Description: Route 53 hosted zone ID for DomainName. Only used when DomainName is set.
+  CertificateArn:
+    Type: String
+    Default: ''
+    Description: >
+      ACM certificate ARN for DomainName. CloudFront only accepts certificates
+      issued in us-east-1, whatever region this stack runs in. Only used when
+      DomainName is set.
+    AllowedPattern: ^$|^arn:aws[a-zA-Z-]*:acm:us-east-1:\d{12}:certificate/.+$
+  StopSchedule:
+    Type: String
+    Default: ''
+    Description: >
+      Optional EventBridge schedule expression that stops the app, for example
+      "cron(0 14 * * ? *)" or "rate(12 hours)". Leave empty for wake only.
+
+Conditions:
+  DomainEnabled: !Not [!Equals [!Ref DomainName, '']]
+  StopEnabled: !Not [!Equals [!Ref StopSchedule, '']]
+
+Resources:
+  HttpApi:
+    Type: AWS::Serverless::HttpApi
+
+  WakeFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub '${FunctionNamePrefix}-wake'
+      CodeUri: src/
+      Handler: handler.handler
+      Runtime: nodejs22.x
+      Architectures: [arm64]
+      MemorySize: 256
+      Timeout: 15
+      LoggingConfig:
+        LogGroup: !Ref WakeLogs
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action: ssm:GetParameter
+              Resource: !Sub 'arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter${SecretParameterName}'
+      Environment:
+        Variables:
+          DATABRICKS_HOST: !Ref DatabricksHost
+          APP_NAME: !Ref AppName
+          APP_URL: !Ref AppUrl
+          DATABRICKS_CLIENT_ID: !Ref DatabricksClientId
+          SECRET_PARAM: !Ref SecretParameterName
+      Events:
+        CatchAll:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+
+  WakeLogs:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${FunctionNamePrefix}-wake'
+      RetentionInDays: 30
+
+  # CloudFront fronts the HTTP API for two reasons: plain http://<domain>:80 gets
+  # a 301 to https (API Gateway custom domains never listen on 80), and a custom
+  # domain needs a certificate somewhere. The execute-api endpoint stays enabled
+  # as CloudFront's origin.
+  Distribution:
+    Type: AWS::CloudFront::Distribution
+    Metadata:
+      cfn-lint:
+        config:
+          # CertificateArn is legitimately empty when DomainEnabled is false, and
+          # cfn-lint checks the Ref against the ACM ARN pattern regardless of the
+          # condition guarding it.
+          ignore_checks: [W1030]
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Comment: !Sub '${FunctionNamePrefix} wake front door'
+        Aliases: !If [DomainEnabled, [!Ref DomainName], !Ref 'AWS::NoValue']
+        HttpVersion: http2
+        IPV6Enabled: true
+        PriceClass: PriceClass_All
+        ViewerCertificate: !If
+          - DomainEnabled
+          - AcmCertificateArn: !Ref CertificateArn
+            SslSupportMethod: sni-only
+            MinimumProtocolVersion: TLSv1.2_2021
+          - CloudFrontDefaultCertificate: true
+        Origins:
+          - Id: wake-api
+            DomainName: !Sub '${HttpApi}.execute-api.${AWS::Region}.amazonaws.com'
+            CustomOriginConfig:
+              OriginProtocolPolicy: https-only
+              OriginSSLProtocols: [TLSv1.2]
+        DefaultCacheBehavior:
+          TargetOriginId: wake-api
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods: [GET, HEAD, OPTIONS]
+          # managed policies: CachingDisabled + AllViewerExceptHostHeader
+          # (execute-api rejects requests carrying the alias Host header)
+          CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
+          OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac
+
+  DnsRecords:
+    Type: AWS::Route53::RecordSetGroup
+    Condition: DomainEnabled
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      RecordSets:
+        - Name: !Ref DomainName
+          Type: A
+          AliasTarget:
+            DNSName: !GetAtt Distribution.DomainName
+            HostedZoneId: Z2FDTNDATAQYW2  # CloudFront's fixed zone id, same in every account
+        - Name: !Ref DomainName
+          Type: AAAA
+          AliasTarget:
+            DNSName: !GetAtt Distribution.DomainName
+            HostedZoneId: Z2FDTNDATAQYW2
+
+  StopFunction:
+    Type: AWS::Serverless::Function
+    Condition: StopEnabled
+    Properties:
+      FunctionName: !Sub '${FunctionNamePrefix}-stop'
+      CodeUri: src/
+      Handler: stop-handler.handler
+      Runtime: nodejs22.x
+      Architectures: [arm64]
+      MemorySize: 256
+      Timeout: 30
+      LoggingConfig:
+        LogGroup: !Ref StopLogs
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action: ssm:GetParameter
+              Resource: !Sub 'arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter${SecretParameterName}'
+      Environment:
+        Variables:
+          DATABRICKS_HOST: !Ref DatabricksHost
+          APP_NAME: !Ref AppName
+          APP_URL: !Ref AppUrl
+          DATABRICKS_CLIENT_ID: !Ref DatabricksClientId
+          SECRET_PARAM: !Ref SecretParameterName
+
+  StopLogs:
+    Type: AWS::Logs::LogGroup
+    Condition: StopEnabled
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${FunctionNamePrefix}-stop'
+      RetentionInDays: 30
+
+  StopRule:
+    Type: AWS::Events::Rule
+    Condition: StopEnabled
+    Properties:
+      Name: !Sub '${FunctionNamePrefix}-stop'
+      Description: !Sub 'Stop the Databricks App ${AppName}'
+      ScheduleExpression: !Ref StopSchedule
+      State: ENABLED
+      Targets:
+        - Id: stop-lambda
+          Arn: !GetAtt StopFunction.Arn
+
+  StopRulePermission:
+    Type: AWS::Lambda::Permission
+    Condition: StopEnabled
+    Properties:
+      FunctionName: !Ref StopFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt StopRule.Arn
+
+Outputs:
+  WakeUrl:
+    Description: Point people at this instead of the app URL.
+    Value: !If [DomainEnabled, !Sub 'https://${DomainName}', !Sub 'https://${Distribution.DomainName}']
+  DistributionDomainName:
+    Description: CloudFront domain, the alias target if you add DNS yourself.
+    Value: !GetAtt Distribution.DomainName

@@ -1,0 +1,19 @@
+# Copy to samconfig.toml and fill in your own values. samconfig.toml is
+# gitignored, because parameter_overrides carries your account and zone IDs.
+version = 0.1
+
+[default.deploy.parameters]
+stack_name = "brickskate"
+region = "ap-southeast-2"
+resolve_s3 = true
+capabilities = "CAPABILITY_IAM"
+confirm_changeset = false
+
+# Wake only, on the CloudFront domain this stack outputs:
+parameter_overrides = "DatabricksHost=\"https://dbc-XXXXXXXX-XXXX.cloud.databricks.com\" AppName=\"my-app\" AppUrl=\"https://my-app-NNNNNNNNNNNNNNNN.aws.databricksapps.com\" DatabricksClientId=\"00000000-0000-0000-0000-000000000000\""
+
+# With a custom domain and a nightly stop, add:
+#   DomainName=\"app.example.com\"
+#   HostedZoneId=\"ZXXXXXXXXXXXXX\"
+#   CertificateArn=\"arn:aws:acm:us-east-1:000000000000:certificate/00000000-0000-0000-0000-000000000000\"
+#   StopSchedule=\"cron(0 14 * * ? *)\"
