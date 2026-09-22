@@ -1,6 +1,6 @@
 // brickskate wake handler: a wake-on-demand front door for a Databricks App.
 //
-// A scale-to-zero app serves 503 once it has been stopped and cannot wake
+// A stopped app serves 503 at its own URL and cannot wake
 // itself, so the first visitor gets an error instead of the app. This Lambda
 // sits in front on an API Gateway HTTP API ($default catch-all), talks to the
 // control-plane Apps API with a service principal, and holds the visitor on a

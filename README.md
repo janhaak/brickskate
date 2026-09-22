@@ -1,6 +1,6 @@
 # brickskate
 
-Wakes a scale-to-zero [Databricks App](https://docs.databricks.com/aws/en/dev-tools/databricks-apps/) when someone shows up, and can put it back to sleep on a timer. One Lambda, one CloudFront distribution, no servers and nothing to keep running.
+Wakes a stopped [Databricks App](https://docs.databricks.com/aws/en/dev-tools/databricks-apps/) when someone shows up, and can put it back to sleep on a timer. One Lambda, one CloudFront distribution, no servers and nothing to keep running.
 
 ## Why
 
