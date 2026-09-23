@@ -197,6 +197,8 @@
   function applyStatus(data) {
     if (typeof data.now === "number" && typeof data.deadline === "number") {
       localDeadlineEpoch = (Date.now() / 1000) + (data.deadline - data.now);
+    } else if (typeof data.lifetime_seconds === "number") {
+      countdownEl.textContent = fmt(data.lifetime_seconds);
     }
 
     if (data.stop_requested_at) {

@@ -29,9 +29,12 @@ BRICKSKATE_STOP_TOKEN = os.environ.get("BRICKSKATE_STOP_TOKEN", "")
 LIFETIME_SECONDS = int(os.environ.get("LIFETIME_SECONDS", "180"))
 
 STARTED_AT = time.time()
-DEADLINE = STARTED_AT + LIFETIME_SECONDS
 
+# The countdown arms on the first page view, not on process start. Waking an
+# app takes a minute or two, and a clock that started with the process would
+# already be half spent by the time the first visitor is redirected in.
 STATE: dict = {
+    "deadline": None,
     "stop_requested_at": None,
     "stop_http_status": None,
     "stop_error": None,
@@ -77,24 +80,36 @@ async def request_stop_async(reason: str) -> dict:
     return await asyncio.to_thread(request_stop, reason)
 
 
-async def _shutdown_timer() -> None:
-    delay = DEADLINE - time.time()
+_timer_task: asyncio.Task | None = None
+
+
+async def _shutdown_timer(deadline: float) -> None:
+    delay = deadline - time.time()
     if delay > 0:
         await asyncio.sleep(delay)
     await request_stop_async("timer")
 
 
+def arm_timer() -> None:
+    """Start the countdown on the first visit. Later visits do not reset it."""
+    global _timer_task
+    if STATE["deadline"] is not None:
+        return
+    STATE["deadline"] = time.time() + LIFETIME_SECONDS
+    _timer_task = asyncio.create_task(_shutdown_timer(STATE["deadline"]))
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    task = asyncio.create_task(_shutdown_timer())
     try:
         yield
     finally:
-        task.cancel()
-        try:
-            await task
-        except (asyncio.CancelledError, Exception):  # noqa: BLE001
-            pass
+        if _timer_task is not None:
+            _timer_task.cancel()
+            try:
+                await _timer_task
+            except (asyncio.CancelledError, Exception):  # noqa: BLE001
+                pass
 
 
 app = FastAPI(lifespan=lifespan)
@@ -103,10 +118,11 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 def _status_payload() -> dict:
     now = time.time()
-    seconds_left = max(0, int(DEADLINE - now))
+    deadline = STATE["deadline"]
+    seconds_left = LIFETIME_SECONDS if deadline is None else max(0, int(deadline - now))
     return {
         "started_at": STARTED_AT,
-        "deadline": DEADLINE,
+        "deadline": deadline,
         "now": now,
         "seconds_left": seconds_left,
         "lifetime_seconds": LIFETIME_SECONDS,
@@ -121,11 +137,13 @@ def _status_payload() -> dict:
 
 @app.get("/")
 async def index() -> FileResponse:
+    arm_timer()
     return FileResponse(STATIC_DIR / "index.html")
 
 
 @app.get("/api/status")
 async def api_status() -> dict:
+    arm_timer()  # in case the page was cached and never hit /
     return _status_payload()
 
 

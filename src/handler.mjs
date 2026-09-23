@@ -201,6 +201,10 @@ export async function handler(event) {
       }
       case "/status": {
         const s = await getApp();
+        // A stop can land while someone is on the waiting page (the app's own
+        // timer, a schedule). The visitor wants it up, so start it again
+        // rather than leaving them polling a stopped app.
+        if (s.compute === "STOPPED" || s.compute === "ERROR") await startApp();
         const ready = isServing(s) && (await probeReady());
         return json({ ...s, ready });
       }

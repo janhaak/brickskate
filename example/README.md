@@ -2,7 +2,8 @@
 
 A tiny demo Databricks App that brickskate wakes on demand. It says hello,
 shows a cheeky brickskate logo, counts down to its own shutdown (180
-seconds by default), and offers a "Shut down now" button. This app never
+seconds from the first page view, not from process start, since a wake
+itself takes a minute or two), and offers a "Shut down now" button. This app never
 talks to Databricks itself; it only asks brickskate to stop it.
 
 Shutdown path:
@@ -51,10 +52,13 @@ databricks apps deploy brickskate --source-code-path /Workspace/Users/<you>/bric
 ```
 
 For brickskate to be able to start and stop this app, its service principal
-needs `CAN_MANAGE` on the app:
+needs `CAN_MANAGE` on the app and `CAN_READ` on the source folder. The second
+one matters because a start redeploys the source as the principal that asked:
 
 ```
 databricks apps set-permissions brickskate --json '{"access_control_list":[{"service_principal_name":"<client-id-uuid>","permission_level":"CAN_MANAGE"}]}'
+DIR_ID=$(databricks workspace get-status /Workspace/Users/<you>/brickskate-example -o json | python3 -c "import json,sys; print(json.load(sys.stdin)['object_id'])")
+databricks workspace update-permissions directories "$DIR_ID" --json '{"access_control_list":[{"service_principal_name":"<client-id-uuid>","permission_level":"CAN_READ"}]}'
 ```
 
 The live copy of this example runs at https://brickskate.haak.au.

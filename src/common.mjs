@@ -72,6 +72,8 @@ export async function getApp() {
     compute: j.compute_status?.state ?? "UNKNOWN",
     app: j.app_status?.state ?? "UNKNOWN",
     message: j.app_status?.message || j.compute_status?.message || "",
+    // Every start redeploys, so this is also "when was the app last started"
+    deployedAt: j.active_deployment?.create_time ?? j.pending_deployment?.create_time ?? null,
   };
 }
 

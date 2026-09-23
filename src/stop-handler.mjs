@@ -21,6 +21,13 @@ export async function handler(event = {}) {
     console.log(JSON.stringify({ action: "none", reason: "already stopped", trigger, before }));
     return { stopped: false, state: before };
   }
+  // A start after the stop was requested wins. Every start redeploys the app,
+  // so a deployment newer than the request means someone woke it in between
+  // and this stop is stale.
+  if (trigger.requestedAt && before.deployedAt && Date.parse(before.deployedAt) > Date.parse(trigger.requestedAt)) {
+    console.log(JSON.stringify({ action: "none", reason: "app started after stop was requested", trigger, before }));
+    return { stopped: false, stale: true, state: before };
+  }
 
   const r = await stopApp();
   // A non-2xx here is usually benign (a stop or a deploy is already in flight),

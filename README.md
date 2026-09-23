@@ -24,7 +24,7 @@ A typical cold wake takes a minute or two, most of it the app installing its dep
 
 You need the [AWS SAM CLI](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/install-sam-cli.html), the [Databricks CLI](https://docs.databricks.com/aws/en/dev-tools/cli/), and an AWS account.
 
-1. **Create a service principal** in your workspace and give it `CAN_MANAGE` on the app. Note its numeric ID and its client ID (a UUID).
+1. **Create a service principal** in your workspace and give it `CAN_MANAGE` on the app. Note its numeric ID and its client ID (a UUID). Also give it `CAN_READ` on the workspace folder the app deploys from: starting an app redeploys its source as whoever pressed start, and a principal that cannot list that folder produces an app that starts its compute and then fails with "no files found".
 
 2. **Mint its OAuth secret into SSM.** This never prints the secret.
 
@@ -112,6 +112,8 @@ databricks secrets put-secret brickskate stop-token --string-value "$TOKEN"
 ```
 
 Both `StopSchedule` and `StopTokenParameterName` can be set at once. Leave both empty and the stop Lambda is not created.
+
+Two races are handled so that a wake always beats a stop. If the app is stopped while a visitor is on the waiting page, the page's next status poll starts it again. And because every start redeploys the app, the stop Lambda compares the request time on a `StopRequested` event with the app's current deployment time and ignores a request that predates the most recent start.
 
 ## Layout
 
