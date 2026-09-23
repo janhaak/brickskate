@@ -31,3 +31,6 @@ cdk.out/
 
 # SAM deploy config, carries account and zone IDs
 samconfig.toml
+
+# Local agent handoff scaffolding, kept out of the public repo
+.agent/

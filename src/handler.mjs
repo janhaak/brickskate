@@ -8,11 +8,23 @@
 //
 //   GET /        start the app if needed, then the self-redirecting waiting page
 //   GET /status  JSON {compute, app, message, ready} for the waiting page poller
+//   POST /stop   with "Authorization: Bearer <token>", publish a StopRequested
+//                event to EventBridge; the stop Lambda does the rest. Only
+//                present when the stack has StopTokenParameterName set.
 //
 // Everything site-specific arrives as an environment variable: DATABRICKS_HOST,
-// APP_NAME, APP_URL, DATABRICKS_CLIENT_ID, SECRET_PARAM.
+// APP_NAME, APP_URL, DATABRICKS_CLIENT_ID, SECRET_PARAM, and optionally
+// STOP_TOKEN_PARAM.
 
-import { getApp, startApp, probeReady, isServing } from "./common.mjs";
+import {
+  getApp,
+  startApp,
+  probeReady,
+  isServing,
+  getStopToken,
+  tokenMatches,
+  requestStop,
+} from "./common.mjs";
 
 const html = (body, statusCode = 200) => ({
   statusCode,
@@ -144,9 +156,34 @@ const waitingPage = (appUrl, appName) => `<!doctype html>
 
 const page = () => html(waitingPage(process.env.APP_URL, process.env.APP_NAME));
 
+const notFound = () => ({ statusCode: 404, headers: { "Cache-Control": "no-store" }, body: "Not found" });
+
+// The app asking to be put to sleep. Authentication is a shared bearer token,
+// compared in constant time; the body is optional and only echoed into the
+// event as context (a reason such as "timer" or "button").
+async function stop(event) {
+  const expected = await getStopToken();
+  if (!expected) return notFound();
+  const auth = event.headers?.authorization ?? event.headers?.Authorization ?? "";
+  const presented = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
+  if (!tokenMatches(presented, expected)) return json({ error: "unauthorized" }, 401);
+  let detail = {};
+  try {
+    const raw = event.isBase64Encoded ? Buffer.from(event.body ?? "", "base64").toString() : event.body;
+    if (raw) detail = JSON.parse(raw);
+  } catch {
+    return json({ error: "body must be JSON" }, 400);
+  }
+  const reason = typeof detail.reason === "string" ? detail.reason.slice(0, 200) : "unspecified";
+  const eventId = await requestStop({ reason, requestedAt: new Date().toISOString() });
+  return json({ accepted: true, eventId }, 202);
+}
+
 export async function handler(event) {
   const pathname = event.rawPath;
+  const method = event.requestContext?.http?.method ?? "GET";
   try {
+    if (pathname === "/stop") return method === "POST" ? stop(event) : json({ error: "POST only" }, 405);
     switch (pathname) {
       case "/": {
         const s = await getApp();
@@ -168,7 +205,7 @@ export async function handler(event) {
         return json({ ...s, ready });
       }
       default:
-        return { statusCode: 404, headers: { "Cache-Control": "no-store" }, body: "Not found" };
+        return notFound();
     }
   } catch (err) {
     return json({ error: String(err?.message || err) }, 502);

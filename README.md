@@ -6,7 +6,9 @@ Wakes a stopped [Databricks App](https://docs.databricks.com/aws/en/dev-tools/da
 
 A stopped Databricks App serves `503` at its own URL and cannot wake itself. On Free Edition the platform stops apps after a period of inactivity, so the next person who opens your link gets an error page rather than your app. On other workspaces the app keeps running until something stops it.
 
-brickskate fixes both ends. Point people at brickskate instead of the app. It checks the app, starts it if needed, holds the visitor on a waiting page, and drops them into the app the moment it is genuinely serving. Optionally it also stops the app on a schedule.
+brickskate fixes both ends. Point people at brickskate instead of the app. It checks the app, starts it if needed, holds the visitor on a waiting page, and drops them into the app the moment it is genuinely serving. Optionally it also stops the app, on a schedule or because the app asked.
+
+There is a live demo at [brickskate.haak.au](https://brickskate.haak.au). It wakes the tiny app in [`example/`](example/), which says hello, counts down three minutes, and then asks brickskate to put it back to sleep. Press the button to skip the wait.
 
 ## How it works
 
@@ -64,6 +66,7 @@ You need the [AWS SAM CLI](https://docs.aws.amazon.com/serverless-application-mo
 | `HostedZoneId` | empty | Route 53 zone for that domain |
 | `CertificateArn` | empty | ACM certificate for that domain, **must be issued in us-east-1** |
 | `StopSchedule` | empty | Optional schedule expression that stops the app |
+| `StopTokenParameterName` | empty | Optional SSM SecureString holding a bearer token; enables `POST /stop` |
 
 Two things worth knowing before you deploy:
 
@@ -83,17 +86,45 @@ The stop Lambda is deliberately blunt. It reads the state and, if the app is not
 
 Leave `StopSchedule` empty and none of those resources are created.
 
+## Letting the app stop itself
+
+An app often knows better than a clock when it is done. Set `StopTokenParameterName` to an SSM SecureString holding a random token and the front door grows one more route:
+
+```
+POST https://<your-brickskate-domain>/stop
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{"reason": "timer"}
+```
+
+The wake Lambda checks the token in constant time, publishes a `StopRequested` event on the default EventBridge bus with the app name in its detail, and answers `202`. An EventBridge rule matching that event invokes the same stop Lambda the schedule uses, so every stop, scheduled or requested, goes through one path and shows up in one log group. The wake Lambda never stops the app itself.
+
+Give the same token to the app. On Databricks the tidy way is a secret scope wired in as an app resource, which lands in the app as an environment variable. [`example/`](example/) shows the whole thing in one small FastAPI app: a countdown, a button, and a `POST` to brickskate when either fires.
+
+Generate the token and store it in both places without ever printing it:
+
+```bash
+TOKEN=$(openssl rand -hex 32)
+aws ssm put-parameter --name /brickskate/stop-token --type SecureString --value "$TOKEN"
+databricks secrets create-scope brickskate
+databricks secrets put-secret brickskate stop-token --string-value "$TOKEN"
+```
+
+Both `StopSchedule` and `StopTokenParameterName` can be set at once. Leave both empty and the stop Lambda is not created.
+
 ## Layout
 
 ```
-src/common.mjs        OAuth token, app status, start, stop, readiness probe
-src/handler.mjs       wake handler: routes / and /status, serves the waiting page
-src/stop-handler.mjs  scheduled stop handler
+src/common.mjs        OAuth token, app status, start, stop, readiness probe, EventBridge publish
+src/handler.mjs       wake handler: routes /, /status and POST /stop, serves the waiting page
+src/stop-handler.mjs  stop handler, invoked by EventBridge on a schedule or a StopRequested event
 template.yaml         SAM template, everything parameterised
 scripts/mint-secret.sh   put a service principal secret into SSM without printing it
+example/              the demo app brickskate.haak.au fronts: hello, logo, countdown, stop button
 ```
 
-No npm dependencies. `@aws-sdk/client-ssm` ships with the Lambda Node.js runtime, and everything else is `fetch`.
+No npm dependencies. `@aws-sdk/client-ssm` and `@aws-sdk/client-eventbridge` ship with the Lambda Node.js runtime, and everything else is `fetch`.
 
 ## Credits
 

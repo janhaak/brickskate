@@ -1,8 +1,10 @@
-// brickskate stop handler: put the Databricks App back to sleep on a schedule.
+// brickskate stop handler: put the Databricks App back to sleep.
 //
-// Invoked by an EventBridge rule (see StopSchedule in template.yaml), never by
-// a visitor. On Free Edition the platform already stops idle apps, so this is
-// optional there; on other workspaces it is the only thing that stops the app.
+// Invoked by EventBridge, never by a visitor: either on a schedule (StopSchedule
+// in template.yaml) or because the app asked via POST /stop, which the wake
+// Lambda turns into a StopRequested event (StopTokenParameterName). On Free
+// Edition the platform already stops idle apps, so the schedule is optional
+// there; on other workspaces it is the only thing that stops the app.
 //
 // Deliberately blunt: it reads the state, and if the app is not already down it
 // asks the control plane to stop it. No idle detection, because the Apps API
@@ -11,10 +13,12 @@
 
 import { getApp, stopApp } from "./common.mjs";
 
-export async function handler() {
+export async function handler(event = {}) {
+  // "schedule" for the scheduled rule, otherwise whatever the app said in POST /stop
+  const trigger = event["detail-type"] === "StopRequested" ? event.detail : { reason: "schedule" };
   const before = await getApp();
   if (before.compute === "STOPPED") {
-    console.log(JSON.stringify({ action: "none", reason: "already stopped", before }));
+    console.log(JSON.stringify({ action: "none", reason: "already stopped", trigger, before }));
     return { stopped: false, state: before };
   }
 
@@ -22,6 +26,6 @@ export async function handler() {
   // A non-2xx here is usually benign (a stop or a deploy is already in flight),
   // so report the response and let the next scheduled run settle it.
   const state = await getApp();
-  console.log(JSON.stringify({ action: "stop", httpStatus: r.status, before, after: state }));
+  console.log(JSON.stringify({ action: "stop", trigger, httpStatus: r.status, before, after: state }));
   return { stopped: r.ok, httpStatus: r.status, state };
 }

@@ -1,0 +1,293 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>brickskate example</title>
+<style>
+  :root {
+    --bg: #f4f2ec;
+    --fg: #2c2a26;
+    --accent: #7a6f5a;
+    --card-bg: #ffffff;
+    --border: rgba(44, 42, 38, 0.12);
+    --muted: rgba(44, 42, 38, 0.6);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #191817;
+      --fg: #e8e5df;
+      --accent: #c8bda3;
+      --card-bg: #232120;
+      --border: rgba(232, 229, 223, 0.14);
+      --muted: rgba(232, 229, 223, 0.6);
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--fg);
+    overflow-x: hidden;
+  }
+  body {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px 16px;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Rounded", "Segoe UI",
+      Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+  .card {
+    width: 100%;
+    max-width: 420px;
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 32px 24px;
+    text-align: center;
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.08);
+  }
+  .logo {
+    width: 140px;
+    height: 105px;
+    display: block;
+    margin: 0 auto 8px;
+  }
+  h1 {
+    font-size: 1.4rem;
+    margin: 8px 0 4px;
+  }
+  .tagline {
+    color: var(--muted);
+    margin: 0 0 20px;
+    font-size: 0.95rem;
+  }
+  .countdown-wrap {
+    margin: 12px 0 20px;
+  }
+  .countdown {
+    font-size: 3rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.02em;
+    color: var(--accent);
+    display: block;
+  }
+  .count-label {
+    color: var(--muted);
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-top: 2px;
+  }
+  button {
+    font: inherit;
+    font-weight: 600;
+    padding: 12px 22px;
+    border-radius: 999px;
+    border: none;
+    background: var(--accent);
+    color: var(--card-bg);
+    cursor: pointer;
+    width: 100%;
+    max-width: 260px;
+  }
+  button:disabled {
+    opacity: 0.6;
+    cursor: default;
+  }
+  .status {
+    margin-top: 16px;
+    min-height: 1.2em;
+    font-size: 0.85rem;
+    color: var(--muted);
+    word-wrap: break-word;
+  }
+  .status a {
+    color: var(--accent);
+  }
+</style>
+</head>
+<body>
+  <main class="card">
+    <svg class="logo" viewBox="0 0 160 120" role="img" aria-label="brickskate: a brick riding a skateboard" xmlns="http://www.w3.org/2000/svg">
+      <g stroke="currentColor" stroke-width="3" stroke-linecap="round" opacity="0.45">
+        <line x1="8" y1="54" x2="26" y2="54"/>
+        <line x1="4" y1="67" x2="20" y2="67"/>
+      </g>
+      <g transform="rotate(-8 80 62)">
+        <path d="M28 96 Q24 82 40 80 L118 80 Q136 82 132 96 Q130 104 118 102 L40 102 Q30 104 28 96 Z" fill="#7a6f5a"/>
+        <rect x="45" y="100" width="14" height="6" rx="2" fill="#7a6f5a"/>
+        <rect x="101" y="100" width="14" height="6" rx="2" fill="#7a6f5a"/>
+        <circle cx="49" cy="110" r="7" fill="#e8e5df"/>
+        <circle cx="49" cy="110" r="2.5" fill="#2c2a26"/>
+        <circle cx="65" cy="110" r="7" fill="#e8e5df"/>
+        <circle cx="65" cy="110" r="2.5" fill="#2c2a26"/>
+        <circle cx="95" cy="110" r="7" fill="#e8e5df"/>
+        <circle cx="95" cy="110" r="2.5" fill="#2c2a26"/>
+        <circle cx="111" cy="110" r="7" fill="#e8e5df"/>
+        <circle cx="111" cy="110" r="2.5" fill="#2c2a26"/>
+        <rect x="46" y="34" width="68" height="44" rx="4" fill="#c4553a"/>
+        <polygon points="46,34 114,34 106,22 54,22" fill="#e07a5f"/>
+        <line x1="52" y1="46" x2="108" y2="46" stroke="#e07a5f" stroke-width="3" opacity="0.6"/>
+        <line x1="52" y1="60" x2="108" y2="60" stroke="#e07a5f" stroke-width="3" opacity="0.4"/>
+        <ellipse cx="62" cy="28" rx="4" ry="2.5" fill="#c4553a"/>
+        <ellipse cx="80" cy="28" rx="4" ry="2.5" fill="#c4553a"/>
+        <ellipse cx="98" cy="28" rx="4" ry="2.5" fill="#c4553a"/>
+        <circle cx="64" cy="50" r="2.5" fill="#2c2a26"/>
+        <circle cx="80" cy="50" r="2.5" fill="#2c2a26"/>
+        <path d="M62 62 Q72 68 84 60" stroke="#2c2a26" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+      </g>
+    </svg>
+    <h1 id="headline">Hello from brickskate</h1>
+    <p class="tagline">This app was woken by brickskate and will put itself back to sleep.</p>
+    <div class="countdown-wrap">
+      <span class="countdown" id="countdown">00:00</span>
+      <div class="count-label" id="countdown-label">until shutdown</div>
+    </div>
+    <button id="stop-btn" type="button">Shut down now</button>
+    <p class="status" id="status-line"></p>
+  </main>
+
+<script>
+(function () {
+  "use strict";
+
+  var headline = document.getElementById("headline");
+  var countdownEl = document.getElementById("countdown");
+  var statusEl = document.getElementById("status-line");
+  var stopBtn = document.getElementById("stop-btn");
+
+  var localDeadlineEpoch = null; // seconds, in local Date.now() timeline
+  var stopped = false;
+  var polling = true;
+  var tickTimer = null;
+  var pollTimer = null;
+
+  function fmt(seconds) {
+    seconds = Math.max(0, Math.floor(seconds));
+    var m = Math.floor(seconds / 60);
+    var s = seconds % 60;
+    return String(m).padStart(2, "0") + ":" + String(s).padStart(2, "0");
+  }
+
+  function clearStatus() {
+    statusEl.textContent = "";
+  }
+
+  function setStatusText(text) {
+    statusEl.textContent = text;
+  }
+
+  function setStatusWithLink(prefix, linkLabel, url, suffix) {
+    statusEl.textContent = "";
+    statusEl.appendChild(document.createTextNode(prefix));
+    var a = document.createElement("a");
+    a.textContent = linkLabel;
+    a.href = url;
+    statusEl.appendChild(a);
+    if (suffix) {
+      statusEl.appendChild(document.createTextNode(suffix));
+    }
+  }
+
+  function applyStatus(data) {
+    if (typeof data.now === "number" && typeof data.deadline === "number") {
+      localDeadlineEpoch = (Date.now() / 1000) + (data.deadline - data.now);
+    }
+
+    if (data.stop_requested_at) {
+      if (!stopped) {
+        // freeze the countdown where it was when the stop was asked for
+        var left = localDeadlineEpoch - (Date.now() / 1000);
+        countdownEl.textContent = fmt(left);
+        document.getElementById("countdown-label").textContent = "stop requested";
+      }
+      stopped = true;
+      stopBtn.disabled = true;
+      headline.textContent = "Going back to sleep";
+
+      if (data.stop_error) {
+        if (data.configured === false) {
+          setStatusText("brickskate is not configured for this app, so nothing will stop it.");
+        } else {
+          setStatusText("Error: " + data.stop_error);
+        }
+      } else {
+        setStatusWithLink(
+          "Stop requested via brickskate (HTTP " + data.stop_http_status + "). Wake me again at ",
+          data.wake_url || "brickskate",
+          data.wake_url || "#",
+          "."
+        );
+      }
+    } else if (data.configured === false) {
+      clearStatus();
+    }
+  }
+
+  function tick() {
+    if (localDeadlineEpoch === null) {
+      return;
+    }
+    if (stopped) {
+      return;
+    }
+    countdownEl.textContent = fmt(localDeadlineEpoch - (Date.now() / 1000));
+  }
+
+  function showAsleep(wakeUrl) {
+    polling = false;
+    if (pollTimer) { clearInterval(pollTimer); }
+    stopBtn.disabled = true;
+    headline.textContent = "Asleep";
+    setStatusWithLink("Asleep. ", "Wake me again", wakeUrl || "#", ".");
+  }
+
+  var lastWakeUrl = "";
+
+  function fetchStatus() {
+    fetch("/api/status")
+      .then(function (resp) {
+        if (!resp.ok) { throw new Error("bad status"); }
+        return resp.json();
+      })
+      .then(function (data) {
+        if (data.wake_url) { lastWakeUrl = data.wake_url; }
+        applyStatus(data);
+      })
+      .catch(function () {
+        if (polling) {
+          showAsleep(lastWakeUrl);
+        }
+      });
+  }
+
+  stopBtn.addEventListener("click", function () {
+    stopBtn.disabled = true;
+    fetch("/api/stop", { method: "POST" })
+      .then(function (resp) {
+        if (!resp.ok) { throw new Error("bad status"); }
+        return resp.json();
+      })
+      .then(function (data) {
+        if (data.wake_url) { lastWakeUrl = data.wake_url; }
+        applyStatus(data);
+      })
+      .catch(function () {
+        showAsleep(lastWakeUrl);
+      });
+  });
+
+  fetchStatus();
+  tickTimer = setInterval(tick, 250);
+  pollTimer = setInterval(function () {
+    if (polling) { fetchStatus(); }
+  }, 5000);
+})();
+</script>
+</body>
+</html>

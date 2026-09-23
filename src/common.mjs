@@ -8,19 +8,32 @@
 // The client secret lives in SSM Parameter Store as a SecureString.
 
 import { SSMClient, GetParameterCommand } from "@aws-sdk/client-ssm";
+import { EventBridgeClient, PutEventsCommand } from "@aws-sdk/client-eventbridge";
+import { timingSafeEqual } from "node:crypto";
 
 // Module scope = per execution environment. The waiting page's 3s polls keep
 // one container warm through the whole wake sequence, so the token and the
 // secret are usually already in hand.
 let tokenCache = { token: null, exp: 0 };
 let secretCache = null;
+let stopTokenCache = null;
+
+async function readParameter(name) {
+  const r = await new SSMClient({}).send(new GetParameterCommand({ Name: name, WithDecryption: true }));
+  return r.Parameter.Value;
+}
 
 async function getClientSecret() {
   if (secretCache) return secretCache;
-  const r = await new SSMClient({}).send(
-    new GetParameterCommand({ Name: process.env.SECRET_PARAM, WithDecryption: true })
-  );
-  return (secretCache = r.Parameter.Value);
+  return (secretCache = await readParameter(process.env.SECRET_PARAM));
+}
+
+// The bearer token that POST /stop must carry. Only read when the stack was
+// deployed with StopTokenParameterName, otherwise the route does not exist.
+export async function getStopToken() {
+  if (!process.env.STOP_TOKEN_PARAM) return null;
+  if (stopTokenCache) return stopTokenCache;
+  return (stopTokenCache = await readParameter(process.env.STOP_TOKEN_PARAM));
 }
 
 function tokenRequest(secret) {
@@ -96,3 +109,30 @@ export async function probeReady() {
 }
 
 export const isServing = (s) => s.compute === "ACTIVE" && s.app === "RUNNING";
+
+// Constant-time comparison of the presented bearer token against the real one.
+export function tokenMatches(presented, expected) {
+  if (!presented || !expected) return false;
+  const a = Buffer.from(presented), b = Buffer.from(expected);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
+// Publish the StopRequested event that StopRequestRule routes to the stop
+// Lambda. The wake Lambda never stops the app itself: keeping every stop on the
+// EventBridge path means one place to look (the stop Lambda's log) whether the
+// stop came from a schedule or from the app asking.
+export async function requestStop(detail = {}) {
+  const r = await new EventBridgeClient({}).send(
+    new PutEventsCommand({
+      Entries: [
+        {
+          Source: "brickskate",
+          DetailType: "StopRequested",
+          Detail: JSON.stringify({ app: process.env.APP_NAME, ...detail }),
+        },
+      ],
+    })
+  );
+  if (r.FailedEntryCount) throw new Error(`event publish failed: ${JSON.stringify(r.Entries)}`);
+  return r.Entries[0].EventId;
+}

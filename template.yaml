@@ -53,10 +53,21 @@ Parameters:
     Description: >
       Optional EventBridge schedule expression that stops the app, for example
       "cron(0 14 * * ? *)" or "rate(12 hours)". Leave empty for wake only.
+  StopTokenParameterName:
+    Type: String
+    Default: ''
+    Description: >
+      Optional SSM SecureString parameter holding a bearer token. When set, the
+      wake front door also accepts "POST /stop" with that token, publishes a
+      StopRequested event to EventBridge, and the stop Lambda picks it up. This
+      is how an app asks brickskate to put it to sleep. Leave empty to disable.
+    AllowedPattern: ^$|^/.+
 
 Conditions:
   DomainEnabled: !Not [!Equals [!Ref DomainName, '']]
   StopEnabled: !Not [!Equals [!Ref StopSchedule, '']]
+  OnDemandStopEnabled: !Not [!Equals [!Ref StopTokenParameterName, '']]
+  StopFunctionEnabled: !Or [!Condition StopEnabled, !Condition OnDemandStopEnabled]
 
 Resources:
   HttpApi:
@@ -79,6 +90,18 @@ Resources:
             - Effect: Allow
               Action: ssm:GetParameter
               Resource: !Sub 'arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter${SecretParameterName}'
+            - !If
+              - OnDemandStopEnabled
+              - Effect: Allow
+                Action: ssm:GetParameter
+                Resource: !Sub 'arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter${StopTokenParameterName}'
+              - !Ref AWS::NoValue
+            - !If
+              - OnDemandStopEnabled
+              - Effect: Allow
+                Action: events:PutEvents
+                Resource: !Sub 'arn:${AWS::Partition}:events:${AWS::Region}:${AWS::AccountId}:event-bus/default'
+              - !Ref AWS::NoValue
       Environment:
         Variables:
           DATABRICKS_HOST: !Ref DatabricksHost
@@ -86,6 +109,7 @@ Resources:
           APP_URL: !Ref AppUrl
           DATABRICKS_CLIENT_ID: !Ref DatabricksClientId
           SECRET_PARAM: !Ref SecretParameterName
+          STOP_TOKEN_PARAM: !If [OnDemandStopEnabled, !Ref StopTokenParameterName, '']
       Events:
         CatchAll:
           Type: HttpApi
@@ -134,7 +158,8 @@ Resources:
         DefaultCacheBehavior:
           TargetOriginId: wake-api
           ViewerProtocolPolicy: redirect-to-https
-          AllowedMethods: [GET, HEAD, OPTIONS]
+          # POST is only used by /stop; CloudFront offers no narrower method set
+          AllowedMethods: [GET, HEAD, OPTIONS, PUT, PATCH, POST, DELETE]
           # managed policies: CachingDisabled + AllViewerExceptHostHeader
           # (execute-api rejects requests carrying the alias Host header)
           CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
@@ -159,7 +184,7 @@ Resources:
 
   StopFunction:
     Type: AWS::Serverless::Function
-    Condition: StopEnabled
+    Condition: StopFunctionEnabled
     Properties:
       FunctionName: !Sub '${FunctionNamePrefix}-stop'
       CodeUri: src/
@@ -185,7 +210,7 @@ Resources:
 
   StopLogs:
     Type: AWS::Logs::LogGroup
-    Condition: StopEnabled
+    Condition: StopFunctionEnabled
     Properties:
       LogGroupName: !Sub '/aws/lambda/${FunctionNamePrefix}-stop'
       RetentionInDays: 30
@@ -211,6 +236,34 @@ Resources:
       Principal: events.amazonaws.com
       SourceArn: !GetAtt StopRule.Arn
 
+  # On-demand stop: the wake Lambda publishes this event when POST /stop arrives
+  # with the right token, and the same stop Lambda handles it. Matching on the
+  # app name means several brickskate stacks can share one default event bus.
+  StopRequestRule:
+    Type: AWS::Events::Rule
+    Condition: OnDemandStopEnabled
+    Properties:
+      Name: !Sub '${FunctionNamePrefix}-stop-request'
+      Description: !Sub 'Stop the Databricks App ${AppName} when it asks'
+      EventPattern:
+        source: [brickskate]
+        detail-type: [StopRequested]
+        detail:
+          app: [!Ref AppName]
+      State: ENABLED
+      Targets:
+        - Id: stop-lambda
+          Arn: !GetAtt StopFunction.Arn
+
+  StopRequestRulePermission:
+    Type: AWS::Lambda::Permission
+    Condition: OnDemandStopEnabled
+    Properties:
+      FunctionName: !Ref StopFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt StopRequestRule.Arn
+
 Outputs:
   WakeUrl:
     Description: Point people at this instead of the app URL.
@@ -218,3 +271,7 @@ Outputs:
   DistributionDomainName:
     Description: CloudFront domain, the alias target if you add DNS yourself.
     Value: !GetAtt Distribution.DomainName
+  StopUrl:
+    Condition: OnDemandStopEnabled
+    Description: 'POST here with "Authorization: Bearer <token>" to put the app to sleep.'
+    Value: !If [DomainEnabled, !Sub 'https://${DomainName}/stop', !Sub 'https://${Distribution.DomainName}/stop']

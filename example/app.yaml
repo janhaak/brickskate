@@ -1,0 +1,8 @@
+command: ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]
+env:
+  - name: BRICKSKATE_URL
+    value: "https://brickskate.haak.au"
+  - name: LIFETIME_SECONDS
+    value: "180"
+  - name: BRICKSKATE_STOP_TOKEN
+    valueFrom: stop-token
