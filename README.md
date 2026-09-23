@@ -10,6 +10,8 @@ brickskate fixes both ends. Point people at brickskate instead of the app. It ch
 
 There is a live demo at [brickskate.haak.au](https://brickskate.haak.au). It wakes the tiny app in [`example/`](example/), which says hello, counts down three minutes, and then asks brickskate to put it back to sleep. Press the button to skip the wait.
 
+<p align="center"><img src="docs/example-countdown.png" alt="The example app: a brick on a skateboard, a hello, a countdown and a Shut down now button" width="520"></p>
+
 ## How it works
 
 1. A request hits CloudFront, which forwards it to an API Gateway HTTP API and on to the wake Lambda.

@@ -6,6 +6,8 @@ seconds from the first page view, not from process start, since a wake
 itself takes a minute or two), and offers a "Shut down now" button. This app never
 talks to Databricks itself; it only asks brickskate to stop it.
 
+<p align="center"><img src="../docs/example-countdown.png" alt="The example app counting down" width="480"></p>
+
 Shutdown path:
 
 button or timer -> POST /api/stop -> POST {BRICKSKATE_URL}/stop -> EventBridge event -> brickskate stop Lambda -> Databricks Apps API stop
