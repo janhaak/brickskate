@@ -7,6 +7,9 @@
 // waiting page until the app is genuinely serving.
 //
 //   GET /        start the app if needed, then the self-redirecting waiting page
+//   GET /<path>  the same for any other path: once serving, the visitor lands
+//                on APP_URL + that path + query (see target.mjs for the
+//                same-app-only guard), so deep links and bookmarks survive
 //   GET /status  JSON {compute, app, message, ready} for the waiting page poller
 //   POST /stop   with "Authorization: Bearer <token>", publish a StopRequested
 //                event to EventBridge; the stop Lambda does the rest. Only
@@ -25,6 +28,7 @@ import {
   tokenMatches,
   requestStop,
 } from "./common.mjs";
+import { safeTarget, appLocation } from "./target.mjs";
 
 const html = (body, statusCode = 200) => ({
   statusCode,
@@ -38,11 +42,14 @@ const json = (obj, statusCode = 200) => ({
   body: JSON.stringify(obj),
 });
 
-const redirect = () => ({
+const redirect = (location) => ({
   statusCode: 302,
-  headers: { Location: process.env.APP_URL, "Cache-Control": "no-store" },
+  headers: { Location: location, "Cache-Control": "no-store" },
   body: "",
 });
+
+// JSON for an inline <script>: escape "<" so a value can never close the tag.
+const scriptJson = (v) => JSON.stringify(v).replace(/</g, "\\u003c");
 
 const esc = (s) =>
   String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -76,7 +83,7 @@ const PAGE_STYLE = `
   }
 `;
 
-const waitingPage = (appUrl, appName) => `<!doctype html>
+const waitingPage = (appLocationUrl, retryPath, appName) => `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -92,8 +99,9 @@ const waitingPage = (appUrl, appName) => `<!doctype html>
     <p class="elapsed" id="elapsed"></p>
   </div>
 <script>
-  const APP_URL = ${JSON.stringify(appUrl)};
-  const APP_NAME = ${JSON.stringify(appName)};
+  const APP_URL = ${scriptJson(appLocationUrl)};
+  const RETRY = ${scriptJson(retryPath)};
+  const APP_NAME = ${scriptJson(appName)};
   const t0 = Date.now();
   const msg = document.getElementById("msg");
   const headline = document.getElementById("headline");
@@ -126,7 +134,7 @@ const waitingPage = (appUrl, appName) => `<!doctype html>
     if (done) return;
     if (Date.now() - t0 > 300000) {
       finish("Taking longer than expected",
-        'Something may be stuck. <a href="/">Try again</a>, or check the app in your Databricks workspace.', true);
+        'Something may be stuck. <a href="' + RETRY + '">Try again</a>, or check the app in your Databricks workspace.', true);
       return;
     }
     try {
@@ -139,7 +147,7 @@ const waitingPage = (appUrl, appName) => `<!doctype html>
       }
       if (s.app === "CRASHED" || s.compute === "ERROR") {
         finish(APP_NAME + " hit a snag",
-          (s.message || "The app failed to start.") + ' <a href="/">Try again</a>', true);
+          (s.message || "The app failed to start.") + ' <a href="' + RETRY + '">Try again</a>', true);
         return;
       }
       msg.textContent = stageMessage(s);
@@ -154,7 +162,8 @@ const waitingPage = (appUrl, appName) => `<!doctype html>
 </body>
 </html>`;
 
-const page = () => html(waitingPage(process.env.APP_URL, process.env.APP_NAME));
+const page = (target) =>
+  html(waitingPage(appLocation(process.env.APP_URL, target), target, process.env.APP_NAME));
 
 const notFound = () => ({ statusCode: 404, headers: { "Cache-Control": "no-store" }, body: "Not found" });
 
@@ -184,33 +193,30 @@ export async function handler(event) {
   const method = event.requestContext?.http?.method ?? "GET";
   try {
     if (pathname === "/stop") return method === "POST" ? stop(event) : json({ error: "POST only" }, 405);
-    switch (pathname) {
-      case "/": {
-        const s = await getApp();
-        if (isServing(s) && (await probeReady())) return redirect();
-        if (s.compute === "STOPPED" || s.compute === "ERROR") {
-          const r = await startApp();
-          if (!r.ok) {
-            const after = await getApp();
-            if (after.compute === "STOPPED" || after.compute === "ERROR") {
-              return page(); // the page will surface the ERROR state to the visitor
-            }
-          }
-        }
-        return page();
-      }
-      case "/status": {
-        const s = await getApp();
-        // A stop can land while someone is on the waiting page (the app's own
-        // timer, a schedule). The visitor wants it up, so start it again
-        // rather than leaving them polling a stopped app.
-        if (s.compute === "STOPPED" || s.compute === "ERROR") await startApp();
-        const ready = isServing(s) && (await probeReady());
-        return json({ ...s, ready });
-      }
-      default:
-        return notFound();
+    if (pathname === "/status") {
+      const s = await getApp();
+      // A stop can land while someone is on the waiting page (the app's own
+      // timer, a schedule). The visitor wants it up, so start it again
+      // rather than leaving them polling a stopped app.
+      if (s.compute === "STOPPED" || s.compute === "ERROR") await startApp();
+      const ready = isServing(s) && (await probeReady());
+      return json({ ...s, ready });
     }
+    // "/" and every other path: wake if needed, then into the app at the same
+    // path + query.
+    const target = safeTarget(pathname, event.rawQueryString ?? "");
+    const s = await getApp();
+    if (isServing(s) && (await probeReady())) return redirect(appLocation(process.env.APP_URL, target));
+    if (s.compute === "STOPPED" || s.compute === "ERROR") {
+      const r = await startApp();
+      if (!r.ok) {
+        const after = await getApp();
+        if (after.compute === "STOPPED" || after.compute === "ERROR") {
+          return page(target); // the page will surface the ERROR state to the visitor
+        }
+      }
+    }
+    return page(target);
   } catch (err) {
     return json({ error: String(err?.message || err) }, 502);
   }

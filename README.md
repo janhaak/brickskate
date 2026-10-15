@@ -20,6 +20,8 @@ There is a live demo at [brickskate.haak.au](https://brickskate.haak.au). It wak
 4. If the app is stopped, it calls `POST /api/2.0/apps/{name}/start` and tolerates a non-2xx response, because "already starting" and "deploy pending" both look like errors. Then it serves a small self-contained waiting page.
 5. The waiting page polls `/status` every 3 seconds, narrates the stage it is in, gives up after 300 seconds, and calls `location.replace()` into the app as soon as the status says ready.
 
+Every path other than `/status` and `/stop` behaves like `/`, and the visitor lands on the same path and query inside the app, so deep links and bookmarks survive a wake. The target is same-app relative only: it must start with a single `/`, with no `//`, no scheme, no backslash, no control characters (raw or percent-encoded) and only URL characters, or the visitor is sent to `/` instead. `src/target.mjs` holds that rule and `node --test` runs its tests.
+
 A typical cold wake takes a minute or two, most of it the app installing its dependencies.
 
 ## Deploy it in about five minutes
@@ -122,7 +124,8 @@ Two races are handled so that a wake always beats a stop. If the app is stopped 
 
 ```
 src/common.mjs        OAuth token, app status, start, stop, readiness probe, EventBridge publish
-src/handler.mjs       wake handler: routes /, /status and POST /stop, serves the waiting page
+src/handler.mjs       wake handler: routes /status, POST /stop and every other path, serves the waiting page
+src/target.mjs        the same-app-only redirect target guard (tests in test/)
 src/stop-handler.mjs  stop handler, invoked by EventBridge on a schedule or a StopRequested event
 template.yaml         SAM template, everything parameterised
 scripts/mint-secret.sh   put a service principal secret into SSM without printing it
