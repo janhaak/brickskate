@@ -39,6 +39,15 @@ Parameters:
     Type: String
     Default: ''
     Description: Route 53 hosted zone ID for DomainName. Only used when DomainName is set.
+  AdditionalDomainNames:
+    Type: String
+    Default: ''
+    Description: >
+      Optional comma-separated extra names for the same front door, for example
+      "old.example.com,www.example.com". They become CloudFront aliases only, so
+      CertificateArn must cover them and their DNS is yours to point at the
+      DistributionDomainName output. Only used when DomainName is set.
+    AllowedPattern: ^$|^[A-Za-z0-9.-]+(,[A-Za-z0-9.-]+)*$
   CertificateArn:
     Type: String
     Default: ''
@@ -65,6 +74,9 @@ Parameters:
 
 Conditions:
   DomainEnabled: !Not [!Equals [!Ref DomainName, '']]
+  AdditionalDomainsEnabled: !And
+    - !Condition DomainEnabled
+    - !Not [!Equals [!Ref AdditionalDomainNames, '']]
   StopEnabled: !Not [!Equals [!Ref StopSchedule, '']]
   OnDemandStopEnabled: !Not [!Equals [!Ref StopTokenParameterName, '']]
   StopFunctionEnabled: !Or [!Condition StopEnabled, !Condition OnDemandStopEnabled]
@@ -139,7 +151,10 @@ Resources:
       DistributionConfig:
         Enabled: true
         Comment: !Sub '${FunctionNamePrefix} wake front door'
-        Aliases: !If [DomainEnabled, [!Ref DomainName], !Ref 'AWS::NoValue']
+        Aliases: !If
+          - AdditionalDomainsEnabled
+          - !Split [',', !Sub '${DomainName},${AdditionalDomainNames}']
+          - !If [DomainEnabled, [!Ref DomainName], !Ref 'AWS::NoValue']
         HttpVersion: http2
         IPV6Enabled: true
         PriceClass: PriceClass_All

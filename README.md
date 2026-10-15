@@ -65,6 +65,7 @@ You need the [AWS SAM CLI](https://docs.aws.amazon.com/serverless-application-mo
 | `SecretParameterName` | `/brickskate/client-secret` | SSM SecureString holding that principal's OAuth secret |
 | `FunctionNamePrefix` | `brickskate` | Prefix for Lambda, log group and rule names, so you can run several |
 | `DomainName` | empty | Optional custom domain |
+| `AdditionalDomainNames` | empty | Optional comma-separated extra aliases on the same door; the certificate must cover them and you point their DNS yourself |
 | `HostedZoneId` | empty | Route 53 zone for that domain |
 | `CertificateArn` | empty | ACM certificate for that domain, **must be issued in us-east-1** |
 | `StopSchedule` | empty | Optional schedule expression that stops the app |
