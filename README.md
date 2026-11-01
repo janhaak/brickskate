@@ -72,6 +72,7 @@ You need the [AWS SAM CLI](https://docs.aws.amazon.com/serverless-application-mo
 | `CertificateArn` | empty | ACM certificate for that domain, **must be issued in us-east-1** |
 | `StopSchedule` | empty | Optional schedule expression that stops the app |
 | `StopTokenParameterName` | empty | Optional SSM SecureString holding a bearer token; enables `POST /stop` |
+| `PageTheme` | empty | The waiting page's look: empty for brickskate's own, `zamboni` for the Zamboni planner's colours and fonts (`src/page-theme.mjs`) |
 
 Two things worth knowing before you deploy:
 

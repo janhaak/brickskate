@@ -71,6 +71,13 @@ Parameters:
       StopRequested event to EventBridge, and the stop Lambda picks it up. This
       is how an app asks brickskate to put it to sleep. Leave empty to disable.
     AllowedPattern: ^$|^/.+
+  PageTheme:
+    Type: String
+    Default: ''
+    Description: >
+      The waiting page's look. Empty keeps brickskate's own; "zamboni" uses the
+      Zamboni planner's colours and fonts (src/page-theme.mjs). Display only.
+    AllowedValues: ['', zamboni]
 
 Conditions:
   DomainEnabled: !Not [!Equals [!Ref DomainName, '']]
@@ -122,6 +129,7 @@ Resources:
           DATABRICKS_CLIENT_ID: !Ref DatabricksClientId
           SECRET_PARAM: !Ref SecretParameterName
           STOP_TOKEN_PARAM: !If [OnDemandStopEnabled, !Ref StopTokenParameterName, '']
+          PAGE_THEME: !Ref PageTheme
       Events:
         CatchAll:
           Type: HttpApi

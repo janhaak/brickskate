@@ -17,7 +17,7 @@
 //
 // Everything site-specific arrives as an environment variable: DATABRICKS_HOST,
 // APP_NAME, APP_URL, DATABRICKS_CLIENT_ID, SECRET_PARAM, and optionally
-// STOP_TOKEN_PARAM.
+// STOP_TOKEN_PARAM and PAGE_THEME (the waiting page's look, page-theme.mjs).
 
 import {
   getApp,
@@ -29,6 +29,7 @@ import {
   requestStop,
 } from "./common.mjs";
 import { safeTarget, appLocation } from "./target.mjs";
+import { pageTheme } from "./page-theme.mjs";
 
 const html = (body, statusCode = 200) => ({
   statusCode,
@@ -54,42 +55,14 @@ const scriptJson = (v) => JSON.stringify(v).replace(/</g, "\\u003c");
 const esc = (s) =>
   String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
-const PAGE_STYLE = `
-  :root { color-scheme: light dark; }
-  * { margin: 0; box-sizing: border-box; }
-  body {
-    font-family: ui-rounded, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    min-height: 100dvh; display: flex; align-items: center; justify-content: center;
-    background: #f4f2ec; color: #2c2a26; padding: 24px;
-  }
-  .card { text-align: center; max-width: 26rem; }
-  h1 { font-size: 1.5rem; font-weight: 650; margin: 20px 0 8px; }
-  p { color: #6b675e; line-height: 1.5; }
-  .spinner {
-    width: 56px; height: 56px; margin: 0 auto;
-    border: 4px solid rgba(125, 115, 95, .2); border-top-color: #7a6f5a;
-    border-radius: 50%; animation: spin 0.9s linear infinite;
-  }
-  @keyframes spin { to { transform: rotate(360deg); } }
-  .elapsed { margin-top: 16px; font-variant-numeric: tabular-nums; font-size: .85rem; color: #a09a8d; }
-  .err { color: #a4472e; }
-  a { color: #7a6f5a; }
-  @media (prefers-color-scheme: dark) {
-    body { background: #191817; color: #e8e5df; }
-    p { color: #a39e93; }
-    .spinner { border-color: rgba(200, 190, 170, .15); border-top-color: #c8bda3; }
-    .err { color: #e08563; }
-    a { color: #c8bda3; }
-  }
-`;
 
-const waitingPage = (appLocationUrl, retryPath, appName) => `<!doctype html>
+const waitingPage = (appLocationUrl, retryPath, appName, theme = pageTheme()) => `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Waking ${esc(appName)}&hellip;</title>
-<style>${PAGE_STYLE}</style>
+${theme.meta}<title>Waking ${esc(appName)}&hellip;</title>
+<style>${theme.style}</style>
 </head>
 <body>
   <div class="card">
@@ -163,7 +136,8 @@ const waitingPage = (appLocationUrl, retryPath, appName) => `<!doctype html>
 </html>`;
 
 const page = (target) =>
-  html(waitingPage(appLocation(process.env.APP_URL, target), target, process.env.APP_NAME));
+  html(waitingPage(appLocation(process.env.APP_URL, target), target, process.env.APP_NAME,
+    pageTheme(process.env.PAGE_THEME)));
 
 const notFound = () => ({ statusCode: 404, headers: { "Cache-Control": "no-store" }, body: "Not found" });
 
